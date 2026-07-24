@@ -542,6 +542,8 @@ class FranchiseFileTable extends EventEmitter {
                     record.index,
                     this.header.recordCapacity
                 );
+
+                this.records[lastEmptyRecordIndex].clearCachedFieldValues();
             } else {
                 // In this case, the record that was emptied is the first empty record in the table
                 this.emptyRecords.set(record.index, {
@@ -605,7 +607,9 @@ class FranchiseFileTable extends EventEmitter {
                     that.strategyBase.table3Field.getInitialUnformattedValue(
                         field,
                         thirdTableData,
-                        overflowRecord ? overflowRecord.fields[field.key] : null,
+                        overflowRecord
+                            ? overflowRecord.fields[field.key]
+                            : null,
                         strategyContext
                     );
                 field.thirdTableField.strategy = that.strategyBase.table3Field;
@@ -728,6 +732,11 @@ class FranchiseFileTable extends EventEmitter {
                                     emptyRecordReference.previous,
                                     emptyRecordReference.next
                                 );
+
+                                // ensure the field cache is cleared
+                                this.records[
+                                    emptyRecordReference.previous
+                                ].clearCachedFieldValues();
                             }
                             // If there is a next empty reference, update the previous value accordingly to now point
                             // to the current record's previous index.

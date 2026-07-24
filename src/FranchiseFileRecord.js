@@ -121,7 +121,7 @@ class FranchiseFileRecord {
     }
     empty() {
         // Clear cached field values because the empty record may change the first 4 data bytes
-        this.fieldsArray.forEach((field) => field.clearCachedValues());
+        this.clearCachedFieldValues();
         // Trigger the empty event
         this._parent.onEvent('empty', this);
         this.isEmpty = true;
@@ -158,6 +158,9 @@ class FranchiseFileRecord {
             }
             this._parent.onEvent('change', this);
         }
+    }
+    clearCachedFieldValues() {
+        this.fieldsArray.forEach((field) => field.clearCachedValues());
     }
 }
 export default FranchiseFileRecord;
