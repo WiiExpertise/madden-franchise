@@ -795,7 +795,12 @@ describe('Madden 26 end to end tests', function () {
                                 table.header.table1StartIndex + 4
                             );
 
+                            // Read the old value so that it is cached
                             const cachedValue = record.LocalPopularity;
+                            table.records[255].NationalPopularity;
+                            table.records[255].RegionalPopularity;
+
+                            // Empty the first record
                             record.empty();
 
                             // Expect that the field value has changed after being emptied
@@ -824,6 +829,13 @@ describe('Madden 26 end to end tests', function () {
                                 table.data.readUInt32BE(
                                     table.header.table1StartIndex + 255 * 4
                                 )
+                            ).to.equal(0);
+
+                            expect(
+                                table.records[255].NationalPopularity
+                            ).to.equal(0);
+                            expect(
+                                table.records[255].RegionalPopularity
                             ).to.equal(0);
 
                             // Make sure the next record buffer is unchanged.
@@ -892,6 +904,9 @@ describe('Madden 26 end to end tests', function () {
 
                             expect(table.records[253].isEmpty).to.be.true;
 
+                            // cache old values
+                            table.records[252].RegionalPopularity;
+
                             table.records[253].LocalPopularity = 20;
                             table.records[253].NationalPopularity = 23;
                             table.records[253].RegionalPopularity = 25;
@@ -916,6 +931,11 @@ describe('Madden 26 end to end tests', function () {
                             expect(
                                 table.records[252].data.readUInt32BE(0)
                             ).to.equal(254);
+
+                            // purges old cached values
+                            expect(
+                                table.records[252].RegionalPopularity
+                            ).to.equal(126);
                         });
 
                         it('filling a record when there is already one or more empty records', () => {
@@ -1783,6 +1803,10 @@ describe('Madden 26 end to end tests', function () {
                 });
 
                 it('can empty a 2nd record', () => {
+                    // ensure the old values are cached
+                    table.records[6].PercentageSpline;
+                    table.records[9].PercentageSpline;
+
                     table.records[6].empty();
 
                     // Adds empty record to map
@@ -1823,15 +1847,25 @@ describe('Madden 26 end to end tests', function () {
                     // Updates record buffer to reflect change
                     expect(table.records[6].data.readUInt32BE(0)).to.equal(22);
 
+                    // Updates formatted value
+                    expect(table.records[6].PercentageSpline).to.equal(
+                        '00000000000000000000000000010110'
+                    ); // 22
+
                     // Updates other record buffer to reflect change to point to 6
                     expect(table.records[9].data.readUInt32BE(0)).to.equal(6);
+
+                    // Updates formatted value
+                    expect(table.records[9].PercentageSpline).to.equal(
+                        '00000000000000000000000000000110'
+                    ); // 6
                 });
 
                 it('can fill the 1st empty record', () => {
                     table.records[9].PercentageSpline =
                         '10000000000000000000000000000011';
 
-                    // Adds empty record to map
+                    // Removes empty record from list
                     expect(table.emptyRecords.size).to.equal(1);
                     expect(table.emptyRecords.get(6)).to.eql({
                         previous: null,
