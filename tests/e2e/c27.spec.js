@@ -1,8 +1,13 @@
+import fs from 'fs';
+import zlib from 'zlib';
 import path, { dirname } from 'path';
 import { expect } from 'chai';
+import { BitView } from 'bit-buffer';
 import FranchiseFile from '../../src/FranchiseFile.js';
+import FranchiseFileTable from '../../src/FranchiseFileTable.js';
 import filePaths from '../util/filePathUtil.js';
 import { fileURLToPath } from 'url';
+import { IsonProcessor } from '../../src/services/isonProcessor.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -11,6 +16,9 @@ const filePathToUse = filePaths.compressed.c27;
 const filePathToSave = filePaths.saveTest.c27;
 
 let file;
+
+const playerTableId = 4244;
+const playerArrayTableIdToTest = 6119;
 
 describe('College Football 27 end to end tests', function () {
     describe('open files', () => {
@@ -81,35 +89,33 @@ describe('College Football 27 end to end tests', function () {
             expect(table.name).to.equal('Player');
         });
 
-        /*
         describe("can read in the file's asset table", () => {
             it('expected length', () => {
-                expect(file.assetTable.length).to.eql(230);
+                expect(file.assetTable.length).to.eql(1507);
             });
 
             it('first asset entry is correct', () => {
                 expect(file.assetTable[0]).to.eql({
-                    assetId: 0x80000836,
-                    reference: 0x2de80000
+                    assetId: 0x8063263c,
+                    reference: 0x219e0000
                 });
             });
 
             it('last asset entry is correct', () => {
                 expect(file.assetTable[file.assetTable.length - 1]).to.eql({
-                    assetId: 0x86002e60,
-                    reference: 0x2dd60009
+                    assetId: 0x98d0e7bf,
+                    reference: 0x31200063
                 });
             });
 
             it('can retrieve reference information from an asset id', () => {
-                const result = file.getReferenceFromAssetId(0x80000836);
+                const result = file.getReferenceFromAssetId(0x8063263c);
                 expect(result).to.eql({
-                    tableId: 5876,
+                    tableId: 4303,
                     rowNumber: 0
                 });
             });
         });
-        */
 
         describe('can save', () => {
             it('can save without any changes', (done) => {
@@ -125,9 +131,9 @@ describe('College Football 27 end to end tests', function () {
             });
 
             it('can save with changes', (done) => {
-                let table = file.getTableByName('PopularityComponentTable');
+                let table = file.getTableByName('SkillSlider');
                 table.readRecords().then(() => {
-                    table.records[0].LocalPopularity = 69;
+                    table.records[0].RunBlocking = 69;
 
                     file.save(filePathToSave).then(() => {
                         let file2 = new FranchiseFile(filePathToSave);
@@ -136,14 +142,12 @@ describe('College Football 27 end to end tests', function () {
                                 file2.unpackedFileContents
                             );
 
-                            let table2 = file2.getTableByName(
-                                'PopularityComponentTable'
-                            );
+                            let table2 = file2.getTableByName('SkillSlider');
                             table2.readRecords().then(() => {
-                                expect(
-                                    table2.records[0].LocalPopularity
-                                ).to.equal(69);
-                                table.records[0].LocalPopularity = 85;
+                                expect(table2.records[0].RunBlocking).to.equal(
+                                    69
+                                );
+                                table.records[0].RunBlocking = 85;
                                 done();
                             });
                         });
@@ -185,23 +189,23 @@ describe('College Football 27 end to end tests', function () {
                     });
                 });
             });
-            /*
+
             it('can save a table2 field containing a non-utf8 character without data loss', (done) => {
                 let table = file.getTableByName('TeamSetting');
                 console.time('read records 1');
 
-                table.readRecords('MaxCloudReplaysDescription').then(() => {
+                table.readRecords('VisitAssistanceDescription').then(() => {
                     console.timeEnd('read records 1');
 
                     const originalValue =
-                        table.records[0].MaxCloudReplaysDescription;
+                        table.records[0].VisitAssistanceDescription;
                     const modifiedValue = originalValue.replace(
                         'Cloud',
                         'Dloud'
                     );
 
                     console.time('set value');
-                    table.records[0].MaxCloudReplaysDescription = modifiedValue;
+                    table.records[0].VisitAssistanceDescription = modifiedValue;
                     console.timeEnd('set value');
 
                     console.time('actual save call');
@@ -217,18 +221,18 @@ describe('College Football 27 end to end tests', function () {
                             console.time('read records 2');
 
                             table2
-                                .readRecords('MaxCloudReplaysDescription')
+                                .readRecords('VisitAssistanceDescription')
                                 .then(() => {
                                     console.timeEnd('read records 2');
                                     expect(
                                         table2.records[0]
-                                            .MaxCloudReplaysDescription
+                                            .VisitAssistanceDescription
                                     ).to.equal(modifiedValue);
 
                                     // Ensure adjacent table2 field hasn't been impacted
                                     expect(
                                         table2.records[1]
-                                            .MaxCloudReplaysDescription
+                                            .VisitAssistanceDescription
                                     ).to.equal(originalValue);
                                     done();
                                 });
@@ -271,38 +275,35 @@ describe('College Football 27 end to end tests', function () {
             });
 
             it('can save a table2 field and a normal field together', (done) => {
-                let division = file.getTableByName('Division');
-                let popularityComponentTable = file.getTableByName(
-                    'PopularityComponentTable'
-                );
+                let division = file.getTableByUniqueId(3621557236);
+                let skillSliderTable = file.getTableByName('SkillSlider');
                 let playerArray = file.getTableById(playerArrayTableIdToTest);
 
                 let promises = [
                     division.readRecords(),
-                    popularityComponentTable.readRecords(),
+                    skillSliderTable.readRecords(),
                     playerArray.readRecords()
                 ];
 
                 Promise.all(promises).then(() => {
                     division.records[4].Name = 'Test Test';
-                    popularityComponentTable.records[14].LocalPopularity = 90;
+                    skillSliderTable.records[1].RunBlocking = 90;
                     let control = playerArray.records[0].Player2;
 
                     file.save(filePathToSave).then(() => {
                         let file2 = new FranchiseFile(filePathToSave);
 
                         file2.on('ready', () => {
-                            division = file2.getTableByName('Division');
-                            popularityComponentTable = file2.getTableByName(
-                                'PopularityComponentTable'
-                            );
+                            division = file2.getTableByUniqueId(3621557236);
+                            skillSliderTable =
+                                file2.getTableByName('SkillSlider');
                             let playerArray2 = file.getTableById(
                                 playerArrayTableIdToTest
                             );
 
                             promises = [
                                 division.readRecords(),
-                                popularityComponentTable.readRecords(),
+                                skillSliderTable.readRecords(),
                                 playerArray2.readRecords()
                             ];
 
@@ -311,8 +312,7 @@ describe('College Football 27 end to end tests', function () {
                                     'Test Test'
                                 );
                                 expect(
-                                    popularityComponentTable.records[14]
-                                        .LocalPopularity
+                                    skillSliderTable.records[1].RunBlocking
                                 ).to.equal(90);
                                 expect(
                                     playerArray2.records[0].Player2
@@ -325,38 +325,35 @@ describe('College Football 27 end to end tests', function () {
             });
 
             it('can save a table2 field and a normal field together with partial fields', (done) => {
-                let division = file.getTableByName('Division');
-                let popularityComponentTable = file.getTableByName(
-                    'PopularityComponentTable'
-                );
+                let division = file.getTableByUniqueId(3621557236);
+                let skillSliderTable = file.getTableByName('SkillSlider');
                 let playerArray = file.getTableById(playerArrayTableIdToTest);
 
                 let promises = [
                     division.readRecords(['Name']),
-                    popularityComponentTable.readRecords(['LocalPopularity']),
+                    skillSliderTable.readRecords(['RunBlocking']),
                     playerArray.readRecords()
                 ];
 
                 Promise.all(promises).then(() => {
                     division.records[4].Name = 'Test Test';
-                    popularityComponentTable.records[14].LocalPopularity = 90;
+                    skillSliderTable.records[1].RunBlocking = 90;
                     let control = playerArray.records[0].Player2;
 
                     file.save(filePathToSave).then(() => {
                         let file2 = new FranchiseFile(filePathToSave);
 
                         file2.on('ready', () => {
-                            division = file2.getTableByName('Division');
-                            popularityComponentTable = file2.getTableByName(
-                                'PopularityComponentTable'
-                            );
+                            division = file2.getTableByUniqueId(3621557236);
+                            skillSliderTable =
+                                file2.getTableByName('SkillSlider');
                             let playerArray2 = file.getTableById(
                                 playerArrayTableIdToTest
                             );
 
                             promises = [
                                 division.readRecords(),
-                                popularityComponentTable.readRecords(),
+                                skillSliderTable.readRecords(),
                                 playerArray2.readRecords()
                             ];
 
@@ -365,8 +362,7 @@ describe('College Football 27 end to end tests', function () {
                                     'Test Test'
                                 );
                                 expect(
-                                    popularityComponentTable.records[14]
-                                        .LocalPopularity
+                                    skillSliderTable.records[1].RunBlocking
                                 ).to.equal(90);
                                 expect(
                                     playerArray2.records[0].Player2
@@ -379,15 +375,13 @@ describe('College Football 27 end to end tests', function () {
             });
 
             it('can save a table2 field and an array field together', (done) => {
-                let division = file.getTableByName('Division');
-                let popularityComponentTable = file.getTableByName(
-                    'PopularityComponentTable'
-                );
+                let division = file.getTableByUniqueId(3621557236);
+                let skillSliderTable = file.getTableByName('SkillSlider');
                 let playerArray = file.getTableById(playerArrayTableIdToTest);
 
                 let promises = [
                     division.readRecords(),
-                    popularityComponentTable.readRecords(),
+                    skillSliderTable.readRecords(),
                     playerArray.readRecords()
                 ];
 
@@ -396,24 +390,22 @@ describe('College Football 27 end to end tests', function () {
                     let playerArrayOriginalRef = playerArray.records[0].Player0;
                     playerArray.records[0].Player0 =
                         '00100000011101100000010001111011';
-                    let control =
-                        popularityComponentTable.records[18].LocalPopularity;
+                    let control = skillSliderTable.records[1].RunBlocking;
 
                     file.save(filePathToSave).then(() => {
                         let file2 = new FranchiseFile(filePathToSave);
 
                         file2.on('ready', () => {
-                            division = file2.getTableByName('Division');
-                            popularityComponentTable = file2.getTableByName(
-                                'PopularityComponentTable'
-                            );
+                            division = file2.getTableByUniqueId(3621557236);
+                            skillSliderTable =
+                                file2.getTableByName('SkillSlider');
                             let playerArray2 = file.getTableById(
                                 playerArrayTableIdToTest
                             );
 
                             promises = [
                                 division.readRecords(),
-                                popularityComponentTable.readRecords(),
+                                skillSliderTable.readRecords(),
                                 playerArray2.readRecords()
                             ];
 
@@ -425,8 +417,7 @@ describe('College Football 27 end to end tests', function () {
                                     playerArray2.records[0].Player0
                                 ).to.equal('00100000011101100000010001111011');
                                 expect(
-                                    popularityComponentTable.records[18]
-                                        .LocalPopularity
+                                    skillSliderTable.records[1].RunBlocking
                                 ).to.equal(control);
                                 playerArray.records[0].Player0 =
                                     playerArrayOriginalRef;
@@ -438,20 +429,18 @@ describe('College Football 27 end to end tests', function () {
             });
 
             it('can save a normal field and an array field together', (done) => {
-                let division = file.getTableByName('Division');
-                let popularityComponentTable = file.getTableByName(
-                    'PopularityComponentTable'
-                );
+                let division = file.getTableByUniqueId(3621557236);
+                let skillSliderTable = file.getTableByName('SkillSlider');
                 let playerArray = file.getTableById(playerArrayTableIdToTest);
 
                 let promises = [
                     division.readRecords(),
-                    popularityComponentTable.readRecords(),
+                    skillSliderTable.readRecords(),
                     playerArray.readRecords()
                 ];
 
                 Promise.all(promises).then(() => {
-                    popularityComponentTable.records[12].RegionalPopularity = 85;
+                    skillSliderTable.records[1].RunBlocking = 85;
                     let playerArrayOriginalRef = playerArray.records[0].Player0;
                     playerArray.records[0].Player0 =
                         '00111111111101100000010001111011';
@@ -461,24 +450,22 @@ describe('College Football 27 end to end tests', function () {
                         let file2 = new FranchiseFile(filePathToSave);
 
                         file2.on('ready', () => {
-                            division = file2.getTableByName('Division');
-                            popularityComponentTable = file2.getTableByName(
-                                'PopularityComponentTable'
-                            );
+                            division = file2.getTableByUniqueId(3621557236);
+                            skillSliderTable =
+                                file2.getTableByName('SkillSlider');
                             let playerArray2 = file.getTableById(
                                 playerArrayTableIdToTest
                             );
 
                             promises = [
                                 division.readRecords(),
-                                popularityComponentTable.readRecords(),
+                                skillSliderTable.readRecords(),
                                 playerArray2.readRecords()
                             ];
 
                             Promise.all(promises).then(() => {
                                 expect(
-                                    popularityComponentTable.records[12]
-                                        .RegionalPopularity
+                                    skillSliderTable.records[1].RunBlocking
                                 ).to.equal(85);
                                 expect(
                                     playerArray2.records[0].Player0
@@ -496,7 +483,7 @@ describe('College Football 27 end to end tests', function () {
             });
 
             it('edit field, then load new table and then save both', (done) => {
-                let division = file.getTableByName('Division');
+                let division = file.getTableByUniqueId(3621557236);
 
                 let promises = [division.readRecords()];
 
@@ -511,7 +498,7 @@ describe('College Football 27 end to end tests', function () {
                             let file2 = new FranchiseFile(filePathToSave);
 
                             file2.on('ready', () => {
-                                division = file2.getTableByName('Division');
+                                division = file2.getTableByUniqueId(3621557236);
                                 weeklyTip = file2.getTableByName('WeeklyTip');
 
                                 promises = [
@@ -533,10 +520,8 @@ describe('College Football 27 end to end tests', function () {
                     });
                 });
             });
-            */
         });
 
-        /*
         describe('correctly parses tables', () => {
             let table;
 
@@ -565,12 +550,12 @@ describe('College Football 27 end to end tests', function () {
                     expect(table.data).to.not.be.undefined;
                     expect(table.hexData).to.not.be.undefined;
                     expect(table.readRecords).to.exist;
-                    expect(table.offset).to.equal(3285980);
+                    expect(table.offset).to.equal(4403677);
                 });
 
                 it('parsed expected header', () => {
                     expect(table.header).to.not.be.undefined;
-                    expect(table.header.tableId).to.equal(4182);
+                    expect(table.header.tableId).to.equal(4201);
                     expect(table.header.data1RecordCount).to.equal(256);
                     expect(table.header.record1Size).to.equal(4);
                     expect(table.header.headerSize).to.equal(244);
@@ -596,7 +581,7 @@ describe('College Football 27 end to end tests', function () {
                 it('can get a binary reference to a record', () => {
                     const reference = table.getBinaryReferenceToRecord(6);
                     expect(reference).to.eql(
-                        '00100000101011000000000000000110'
+                        '00100000110100100000000000000110'
                     );
                 });
 
@@ -614,7 +599,7 @@ describe('College Football 27 end to end tests', function () {
                     });
 
                     it('identifies empty records', () => {
-                        expect(table.emptyRecords.size).to.equal(95);
+                        expect(table.emptyRecords.size).to.equal(256);
                         expect(table.emptyRecords.get(230)).to.eql({
                             previous: 229,
                             next: 231
@@ -695,45 +680,45 @@ describe('College Football 27 end to end tests', function () {
 
                             it('access values directly from record', () => {
                                 expect(record).to.not.be.undefined;
-                                expect(record.LocalPopularity).to.equal(85);
-                                expect(record.NationalPopularity).to.equal(80);
-                                expect(record.RegionalPopularity).to.equal(85);
+                                expect(record.LocalPopularity).to.equal(0);
+                                expect(record.NationalPopularity).to.equal(0);
+                                expect(record.RegionalPopularity).to.equal(1);
                             });
 
                             it('getValueByKey()', () => {
                                 expect(
                                     record.getValueByKey('LocalPopularity')
-                                ).to.equal(85);
+                                ).to.equal(0);
                                 expect(
                                     record.getValueByKey('NationalPopularity')
-                                ).to.equal(80);
+                                ).to.equal(0);
                                 expect(
                                     record.getValueByKey('RegionalPopularity')
-                                ).to.equal(85);
+                                ).to.equal(1);
                             });
 
                             it('getFieldByKey()', () => {
                                 let localPopField =
                                     record.getFieldByKey('LocalPopularity');
                                 expect(localPopField).to.not.be.undefined;
-                                expect(localPopField.value).to.equal(85);
+                                expect(localPopField.value).to.equal(0);
                                 expect(
                                     localPopField.unformattedValue.getBits(
                                         localPopField.offset.offset,
                                         localPopField.offset.length
                                     )
-                                ).to.equal(85);
+                                ).to.equal(0);
 
                                 let regionalPopField =
                                     record.getFieldByKey('RegionalPopularity');
                                 expect(regionalPopField).to.not.be.undefined;
-                                expect(regionalPopField.value).to.equal(85);
+                                expect(regionalPopField.value).to.equal(1);
                                 expect(
                                     regionalPopField.unformattedValue.getBits(
                                         regionalPopField.offset.offset,
                                         regionalPopField.offset.length
                                     )
-                                ).to.equal(85);
+                                ).to.equal(1);
                             });
                         });
 
@@ -745,9 +730,9 @@ describe('College Football 27 end to end tests', function () {
                             });
 
                             it('has expected values', () => {
-                                expect(record.LocalPopularity).to.equal(85);
-                                expect(record.NationalPopularity).to.equal(75);
-                                expect(record.RegionalPopularity).to.equal(80);
+                                expect(record.LocalPopularity).to.equal(0);
+                                expect(record.NationalPopularity).to.equal(0);
+                                expect(record.RegionalPopularity).to.equal(2);
                             });
 
                             it('has expected unformatted values', () => {
@@ -755,17 +740,17 @@ describe('College Football 27 end to end tests', function () {
                                     record.fields[
                                         'LocalPopularity'
                                     ].unformattedValue.getBits(0, 18)
-                                ).to.equal(85);
+                                ).to.equal(0);
                                 expect(
                                     record.fields[
                                         'NationalPopularity'
                                     ].unformattedValue.getBits(18, 7)
-                                ).to.equal(75);
+                                ).to.equal(0);
                                 expect(
                                     record.fields[
                                         'RegionalPopularity'
                                     ].unformattedValue.getBits(25, 7)
-                                ).to.equal(80);
+                                ).to.equal(2);
                             });
                         });
                     });
@@ -783,16 +768,27 @@ describe('College Football 27 end to end tests', function () {
                             record = table.records[0];
                         });
 
+                        before(() => {
+                            record = table.records[0];
+
+                            // un-empty the 1st record
+                            record.LocalPopularity = 85;
+                            record.NationalPopularity = 70;
+                            record.RegionalPopularity = 40;
+                        });
+
                         it('emptying a record where there is already one or more empty records', () => {
                             // This table is 4 bytes long so we can do this safely
                             const firstRecordValue = table.data.readUInt32BE(
                                 table.header.table1StartIndex + 4
                             );
 
+                            expect(record.isEmpty).to.be.false;
+
                             record.empty();
 
                             expect(record.isEmpty).to.be.true;
-                            expect(table.emptyRecords.size).to.equal(96);
+                            expect(table.emptyRecords.size).to.equal(256);
                             expect(table.emptyRecords.get(255)).to.eql({
                                 previous: 254,
                                 next: 0
@@ -836,7 +832,8 @@ describe('College Football 27 end to end tests', function () {
 
                             record.empty();
 
-                            expect(table.emptyRecords.size).to.equal(96);
+                            expect(record.isEmpty).to.be.true;
+                            expect(table.emptyRecords.size).to.equal(256);
                             expect(table.emptyRecords.get(255)).to.eql({
                                 previous: 254,
                                 next: 0
@@ -885,7 +882,7 @@ describe('College Football 27 end to end tests', function () {
 
                             expect(table.records[253].isEmpty).to.be.false;
 
-                            expect(table.emptyRecords.size).to.equal(95);
+                            expect(table.emptyRecords.size).to.equal(255);
                             expect(table.emptyRecords.get(252)).to.eql({
                                 previous: 251,
                                 next: 254
@@ -915,7 +912,7 @@ describe('College Football 27 end to end tests', function () {
 
                             expect(table.records[254].isEmpty).to.be.false;
 
-                            expect(table.emptyRecords.size).to.equal(94);
+                            expect(table.emptyRecords.size).to.equal(254);
                             expect(table.emptyRecords.get(252)).to.eql({
                                 previous: 251,
                                 next: 255
@@ -941,7 +938,7 @@ describe('College Football 27 end to end tests', function () {
                             table.records[0].NationalPopularity = 23;
                             table.records[0].RegionalPopularity = 25;
 
-                            expect(table.emptyRecords.size).to.equal(93);
+                            expect(table.emptyRecords.size).to.equal(253);
                             expect(table.emptyRecords.get(255)).to.eql({
                                 previous: 252,
                                 next: 256
@@ -962,7 +959,7 @@ describe('College Football 27 end to end tests', function () {
 
             describe('Player[] table', () => {
                 before(() => {
-                    table = file.getTableByName('Player[]');
+                    table = file.getTableById(playerArrayTableIdToTest);
                 });
 
                 it('table exists', () => {
@@ -973,22 +970,22 @@ describe('College Football 27 end to end tests', function () {
                 it('parses expected attribute values', () => {
                     expect(table.isArray).to.be.true;
                     expect(table.isChanged).to.be.false;
-                    expect(table.recordsRead).to.be.false;
+                    expect(table.recordsRead).to.be.true;
                     expect(table.data).to.not.be.undefined;
                     expect(table.hexData).to.not.be.undefined;
                     expect(table.readRecords).to.exist;
-                    expect(table.offset).to.equal(11872273);
+                    expect(table.offset).to.equal(25636345);
                 });
 
                 it('parsed expected header', () => {
                     expect(table.header).to.not.be.undefined;
-                    expect(table.header.tableId).to.equal(5493);
-                    expect(table.header.data1RecordCount).to.equal(2);
-                    expect(table.header.record1Size).to.equal(1600);
-                    expect(table.header.headerSize).to.equal(249);
+                    expect(table.header.tableId).to.equal(6119);
+                    expect(table.header.data1RecordCount).to.equal(5005);
+                    expect(table.header.record1Size).to.equal(24);
+                    expect(table.header.headerSize).to.equal(252);
                     expect(table.header.hasSecondTable).to.be.false;
-                    expect(table.header.table1StartIndex).to.equal(257);
-                    expect(table.header.table1Length).to.equal(3240);
+                    expect(table.header.table1StartIndex).to.equal(20272);
+                    expect(table.header.table1Length).to.equal(140172);
                 });
 
                 it('has correct schema', () => {
@@ -1003,7 +1000,7 @@ describe('College Football 27 end to end tests', function () {
                     });
 
                     it('parses offset table correctly', () => {
-                        expect(table.offsetTable.length).to.equal(400);
+                        expect(table.offsetTable.length).to.equal(6);
 
                         expect(table.offsetTable[0].name).to.equal('Player0');
                         expect(table.offsetTable[0].isReference).to.be.true;
@@ -1022,42 +1019,34 @@ describe('College Football 27 end to end tests', function () {
                     });
 
                     it('parses array sizes correctly', () => {
-                        expect(table.arraySizes.length).to.equal(2);
-                        expect(table.arraySizes[0]).to.equal(2);
+                        expect(table.arraySizes.length).to.equal(5005);
+                        expect(table.arraySizes[0]).to.equal(3);
                     });
 
                     it('parses array sizes correctly - multiple rows', async () => {
-                        const table = file.getTableById(
-                            playerArrayTableIdToTest
-                        );
-                        await table.readRecords();
-
-                        expect(table.arraySizes.length).to.equal(
-                            table.header.data1RecordCount
-                        );
-                        expect(table.arraySizes[0]).to.equal(74);
-                        expect(table.arraySizes[14]).to.equal(74);
-                        expect(table.arraySizes[22]).to.equal(75);
+                        expect(table.arraySizes[0]).to.equal(3);
+                        expect(table.arraySizes[14]).to.equal(3);
+                        expect(table.arraySizes[19]).to.equal(5);
                     });
 
                     it('reads records correctly', () => {
-                        expect(table.records.length).to.equal(2);
+                        expect(table.records.length).to.equal(5005);
                         expect(table.recordsRead).to.be.true;
 
                         let record = table.records[0];
                         expect(record.Player0).to.eql(
-                            '00100000111110000000100010110011'
+                            '00100001001010000000000011000110'
                         );
                         expect(record.Player1).to.eql(
-                            '00100000111110000000001011110001'
+                            '00100001001010000000101010101010'
                         );
                         expect(record.Player2).to.eql(
-                            '00000000000000000000000000000000'
+                            '00100001001010000000100100100010'
                         );
                         expect(record.hexData.slice(0, 10)).to.eql(
                             Buffer.from([
-                                0x20, 0xf8, 0x08, 0xb3, 0x20, 0xf8, 0x02, 0xf1,
-                                0x00, 0x00
+                                0x21, 0x28, 0x00, 0xc6, 0x21, 0x28, 0x0a, 0xaa,
+                                0x21, 0x28
                             ])
                         );
                     });
@@ -1068,15 +1057,17 @@ describe('College Football 27 end to end tests', function () {
                         file.save(filePathToSave).then(() => {
                             let file2 = new FranchiseFile(filePathToSave);
                             file2.on('ready', () => {
-                                let table2 = file2.getTableByName('Player[]');
+                                let table2 = file2.getTableById(
+                                    playerArrayTableIdToTest
+                                );
                                 table2.readRecords().then(() => {
                                     expect(table2.records[0].Player0).to.eql(
                                         '00100000011101100000010001111011'
                                     );
                                     expect(table2.records[0].Player1).to.eql(
-                                        '00100000111110000000001011110001'
+                                        '00100001001010000000101010101010'
                                     );
-                                    expect(table2.records[0].Player2).to.eql(
+                                    expect(table2.records[0].Player3).to.eql(
                                         '00000000000000000000000000000000'
                                     );
                                     done();
@@ -1094,11 +1085,11 @@ describe('College Football 27 end to end tests', function () {
                             expect(newTable.arraySizes.length).to.equal(
                                 newTable.header.data1RecordCount
                             );
-                            expect(newTable.arraySizes[0]).to.equal(74);
+                            expect(newTable.arraySizes[0]).to.equal(3);
 
-                            newTable.records[0].Player74 =
+                            newTable.records[0].Player3 =
                                 '00100000011101100000010001111011';
-                            expect(newTable.arraySizes[0]).to.equal(75);
+                            expect(newTable.arraySizes[0]).to.equal(4);
 
                             file.save(filePathToSave).then(() => {
                                 let file2 = new FranchiseFile(filePathToSave);
@@ -1110,27 +1101,27 @@ describe('College Football 27 end to end tests', function () {
 
                                     table2.readRecords().then(() => {
                                         expect(table2.arraySizes[0]).to.equal(
-                                            75
+                                            4
                                         );
                                         expect(
                                             table2.records[0].Player0
                                         ).to.eql(
-                                            '00100000111110000000000000000000'
+                                            '00100000011101100000010001111011'
                                         );
                                         expect(
                                             table2.records[0].Player1
                                         ).to.eql(
-                                            '00100000111110000000000000011110'
+                                            '00100001001010000000101010101010'
                                         );
                                         expect(
-                                            table2.records[0].Player74
+                                            table2.records[0].Player2
+                                        ).to.eql(
+                                            '00100001001010000000100100100010'
+                                        );
+                                        expect(
+                                            table2.records[0].Player3
                                         ).to.eql(
                                             '00100000011101100000010001111011'
-                                        );
-                                        expect(
-                                            table2.records[0].Player75
-                                        ).to.eql(
-                                            '00000000000000000000000000000000'
                                         );
                                         done();
                                     });
@@ -1147,9 +1138,9 @@ describe('College Football 27 end to end tests', function () {
                         newTable.readRecords().then(() => {
                             newTable.arraySizes[0] = 0;
                             newTable.records[0].arraySize = 0;
-                            newTable.records[0].Player96 =
+                            newTable.records[0].Player4 =
                                 '00100000011101100000010001111011';
-                            expect(newTable.arraySizes[0]).to.equal(97);
+                            expect(newTable.arraySizes[0]).to.equal(5);
                             done();
                         });
                     });
@@ -1163,15 +1154,15 @@ describe('College Football 27 end to end tests', function () {
                             expect(newTable.arraySizes.length).to.equal(
                                 newTable.header.data1RecordCount
                             );
-                            expect(newTable.arraySizes[17]).to.equal(75);
-                            expect(newTable.arraySizes[26]).to.equal(74);
+                            expect(newTable.arraySizes[17]).to.equal(3);
+                            expect(newTable.arraySizes[26]).to.equal(3);
 
-                            newTable.records[17].Player76 =
+                            newTable.records[17].Player4 =
                                 '00100000011101100000010001111011';
-                            newTable.records[26].Player81 =
+                            newTable.records[26].Player5 =
                                 '00100000011101100000010001111011';
-                            expect(newTable.arraySizes[17]).to.equal(77);
-                            expect(newTable.arraySizes[26]).to.equal(82);
+                            expect(newTable.arraySizes[17]).to.equal(5);
+                            expect(newTable.arraySizes[26]).to.equal(6);
 
                             file.save(filePathToSave).then(() => {
                                 let file2 = new FranchiseFile(filePathToSave);
@@ -1183,19 +1174,19 @@ describe('College Football 27 end to end tests', function () {
 
                                     table2.readRecords().then(() => {
                                         expect(table2.arraySizes[17]).to.equal(
-                                            77
+                                            5
                                         );
                                         expect(table2.arraySizes[26]).to.equal(
-                                            82
+                                            6
                                         );
 
                                         expect(
-                                            table2.records[17].Player76
+                                            table2.records[17].Player4
                                         ).to.eql(
                                             '00100000011101100000010001111011'
                                         );
                                         expect(
-                                            table2.records[26].Player81
+                                            table2.records[26].Player5
                                         ).to.eql(
                                             '00100000011101100000010001111011'
                                         );
@@ -1233,13 +1224,13 @@ describe('College Football 27 end to end tests', function () {
 
                 it('make one record empty', () => {
                     table.records[19].Player0 =
-                        '00000000000000000000000000100000';
+                        '00000000000000000001001110001101';
                     table.recalculateEmptyRecordReferences();
 
                     expect(table.emptyRecords.size).to.equal(1);
                     expect(table.emptyRecords.get(19)).to.eql({
                         previous: null,
-                        next: 32
+                        next: 5005
                     });
 
                     expect(table.header.nextRecordToUse).to.equal(19);
@@ -1252,8 +1243,7 @@ describe('College Football 27 end to end tests', function () {
 
         describe('Player table', () => {
             let table;
-            const marcusMayeIndex = 1703;
-            const bakerMayfieldIndex = 1705;
+            const playerIndex = 6744;
 
             beforeEach(() => {
                 table = file.getTableById(playerTableId);
@@ -1271,25 +1261,25 @@ describe('College Football 27 end to end tests', function () {
                 expect(table.data).to.not.be.undefined;
                 expect(table.hexData).to.not.be.undefined;
                 expect(table.readRecords).to.exist;
-                expect(table.offset).to.equal(5808145);
+                expect(table.offset).to.equal(11871480);
             });
 
             it('parsed expected header', () => {
                 expect(table.header).to.not.be.undefined;
                 expect(table.header.tableId).to.equal(playerTableId);
-                expect(table.header.data1RecordCount).to.equal(3960);
-                expect(table.header.record1Size).to.equal(280);
-                expect(table.header.headerSize).to.equal(1568);
+                expect(table.header.data1RecordCount).to.equal(16500);
+                expect(table.header.record1Size).to.equal(192);
+                expect(table.header.headerSize).to.equal(1384);
                 expect(table.header.hasSecondTable).to.be.true;
-                expect(table.header.table1StartIndex).to.equal(1568);
-                expect(table.header.table1Length).to.equal(1110168);
-                expect(table.header.table2StartIndex).to.equal(1110368);
-                expect(table.header.table2Length).to.equal(518760);
+                expect(table.header.table1StartIndex).to.equal(1384);
+                expect(table.header.table1Length).to.equal(3169184);
+                expect(table.header.table2StartIndex).to.equal(3169384);
+                expect(table.header.table2Length).to.equal(2277000);
             });
 
             it('has correct schema', () => {
                 expect(table.schema).to.not.be.undefined;
-                expect(table.schema.attributes.length).to.equal(334);
+                expect(table.schema.attributes.length).to.equal(288);
                 expect(table.schema.attributes[0].name).to.equal(
                     'IsUserControlled'
                 );
@@ -1300,7 +1290,7 @@ describe('College Football 27 end to end tests', function () {
                     'IronManPosition'
                 );
                 expect(table.schema.attributes[104].name).to.equal(
-                    'ContractBonus0'
+                    'WearAndTear_LFoot'
                 );
             });
 
@@ -1323,35 +1313,35 @@ describe('College Football 27 end to end tests', function () {
 
                 it('has expected offset table', () => {
                     expect(table.loadedOffsets.length).to.equal(7);
-                    expect(table.offsetTable.length).to.equal(328);
+                    expect(table.offsetTable.length).to.equal(282);
 
-                    let offset2 = table.offsetTable[2];
-                    expect(offset2.name).to.equal('SeasonStats');
-                    expect(offset2.isReference).to.be.true;
-                    expect(offset2.originalIndex).to.equal(276);
-                    expect(offset2.index).to.equal(296);
-                    expect(offset2.offset).to.equal(64);
-                    expect(offset2.indexOffset).to.equal(64);
-                    expect(offset2.length).to.equal(32);
+                    let seasonStatsOffset = table.offsetTable[3];
+                    expect(seasonStatsOffset.name).to.equal('SeasonStats');
+                    expect(seasonStatsOffset.isReference).to.be.true;
+                    expect(seasonStatsOffset.originalIndex).to.equal(233);
+                    expect(seasonStatsOffset.index).to.equal(253);
+                    expect(seasonStatsOffset.offset).to.equal(96);
+                    expect(seasonStatsOffset.indexOffset).to.equal(96);
+                    expect(seasonStatsOffset.length).to.equal(32);
 
-                    let offset8 = table.offsetTable[8];
-                    expect(offset8.name).to.equal('PLYR_ASSETNAME');
-                    expect(offset8.isReference).to.be.false;
-                    expect(offset8.originalIndex).to.equal(169);
-                    expect(offset8.index).to.equal(251);
-                    expect(offset8.offset).to.equal(256);
-                    expect(offset8.indexOffset).to.equal(256);
-                    expect(offset8.length).to.equal(32);
+                    let assetNameOffset = table.offsetTable[6];
+                    expect(assetNameOffset.name).to.equal('PLYR_ASSETNAME');
+                    expect(assetNameOffset.isReference).to.be.false;
+                    expect(assetNameOffset.originalIndex).to.equal(96);
+                    expect(assetNameOffset.index).to.equal(213);
+                    expect(assetNameOffset.offset).to.equal(192);
+                    expect(assetNameOffset.indexOffset).to.equal(192);
+                    expect(assetNameOffset.length).to.equal(32);
 
-                    let runningStyleOffset = table.offsetTable[273];
+                    let runningStyleOffset = table.offsetTable[147];
                     expect(runningStyleOffset.name).to.equal(
                         'RunningStyleRating'
                     );
                     expect(runningStyleOffset.isReference).to.be.false;
-                    expect(runningStyleOffset.originalIndex).to.equal(271);
-                    expect(runningStyleOffset.index).to.equal(293);
-                    expect(runningStyleOffset.offset).to.equal(2156);
-                    expect(runningStyleOffset.indexOffset).to.equal(2159);
+                    expect(runningStyleOffset.originalIndex).to.equal(228);
+                    expect(runningStyleOffset.index).to.equal(250);
+                    expect(runningStyleOffset.offset).to.equal(1287);
+                    expect(runningStyleOffset.indexOffset).to.equal(1300);
                     expect(runningStyleOffset.length).to.equal(5);
 
                     expect(runningStyleOffset.enum).to.not.be.undefined;
@@ -1376,53 +1366,41 @@ describe('College Football 27 end to end tests', function () {
                         let record = table.records[0];
                         expect(record.GameStats).to.be.null;
                         expect(record.SeasonStats).to.equal(
-                            '00101110010101000000000000000000'
+                            '00000000000000000000000000000000'
                         );
-                        expect(record.FirstName).to.equal('Israel');
-                        expect(record.LastName).to.equal('Abanikanda');
-                        expect(record.Position).to.equal('HB');
+                        expect(record.FirstName).to.equal('Omar');
+                        expect(record.LastName).to.equal('Aarons');
+                        expect(record.Position).to.equal('WR');
                         expect(record.PT_BIGHITTER).to.equal(false);
                         expect(record.InjuryType).to.equal('Invalid_');
                     });
 
-                    it('Marcus Maye', () => {
-                        let record = table.records[marcusMayeIndex];
+                    it('Arch Manning', () => {
+                        let record = table.records[playerIndex];
                         expect(record.GameStats).to.be.null;
                         expect(record.SeasonStats).to.equal(
-                            '00101110010101000000010110101000'
+                            '00000000000000000000000000000000'
                         );
-                        expect(record.FirstName).to.equal('Marcus');
-                        expect(record.LastName).to.equal('Maye');
-                        expect(record.Position).to.equal('SS');
-                        expect(record.PT_BIGHITTER).to.equal(false);
-                    });
-
-                    it('Baker Mayfield', () => {
-                        let record = table.records[bakerMayfieldIndex];
-                        expect(record.GameStats).to.be.null;
-                        expect(record.SeasonStats).to.equal(
-                            '00101110010101000000010110101010'
-                        );
-                        expect(record.FirstName).to.equal('Baker');
-                        expect(record.LastName).to.equal('Mayfield');
+                        expect(record.FirstName).to.equal('Arch');
+                        expect(record.LastName).to.equal('Manning');
                         expect(record.Position).to.equal('QB');
                         expect(record.PT_BIGHITTER).to.equal(false);
                     });
 
-                    it('Baker Mayfield - table2 field (First Name)', () => {
-                        let record = table.records[bakerMayfieldIndex];
+                    it('Arch Manning - table2 field (First Name)', () => {
+                        let record = table.records[playerIndex];
                         const field =
                             record.getFieldByKey('FirstName').secondTableField;
 
                         expect(field).to.not.be.undefined;
-                        expect(field.index).to.equal(223355);
+                        expect(field.index).to.equal(930672);
                         expect(field.maxLength).to.equal(17);
-                        expect(field.value).to.equal('Baker');
+                        expect(field.value).to.equal('Arch');
                         expect(field.unformattedValue.length).to.equal(17);
                         expect(field.unformattedValue).to.eql(
                             Buffer.from([
-                                0x42, 0x61, 0x6b, 0x65, 0x72, 0, 0, 0, 0, 0, 0,
-                                0, 0, 0, 0, 0, 0
+                                65, 114, 99, 104, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                0, 0, 0
                             ])
                         );
                     });
@@ -1488,8 +1466,8 @@ describe('College Football 27 end to end tests', function () {
                         });
                 });
 
-                it('can change Baker Mayfields name', () => {
-                    let record = table.records[bakerMayfieldIndex];
+                it('can change a name', () => {
+                    let record = table.records[playerIndex];
                     record.FirstName = 'Clark';
                     record.LastName = 'Kent';
                     record.MetaMorph_GutBase = 0.49494949494;
@@ -1502,7 +1480,7 @@ describe('College Football 27 end to end tests', function () {
                 });
 
                 it('wont allow invalid reference value', () => {
-                    let record = table.records[bakerMayfieldIndex];
+                    let record = table.records[playerIndex];
 
                     expect(() => {
                         record.getFieldByKey('FirstName').unformattedValue =
@@ -1511,7 +1489,7 @@ describe('College Football 27 end to end tests', function () {
                 });
 
                 it('wont allow invalid reference values if setting value either', () => {
-                    let record = table.records[bakerMayfieldIndex];
+                    let record = table.records[playerIndex];
 
                     expect(() => {
                         record.GameStats = '222010101';
@@ -1519,32 +1497,30 @@ describe('College Football 27 end to end tests', function () {
                 });
 
                 it('can set an integer field with a string', () => {
-                    let record = table.records[bakerMayfieldIndex];
+                    let record = table.records[playerIndex];
                     record.CarryingRating = '50';
                     expect(record.CarryingRating).to.equal(50);
                 });
             });
         });
 
-        describe('DraftClassStrengthAndTierToWeightMapping', () => {
+        describe('Injury_AttributeModifier', () => {
             let table;
-            const tableUniqueId = 3292832385;
+            const tableUniqueId = 4243555669;
             before(async () => {
                 table = file.getTableByUniqueId(tableUniqueId);
                 await table.readRecords();
             });
 
             it('can parse a float value', () => {
-                expect(table.records[8].WeightScale).to.equal(1.25);
-                expect(table.records[9].WeightScale).to.equal(
-                    0.8500000238418579
-                );
+                expect(table.records[8].Value).to.equal(0.8500000238418579);
+                expect(table.records[9].Value).to.equal(0.949999988079071);
             });
 
             it('can edit a float value', async () => {
                 const editedValue = 9.021;
-                table.records[8].WeightScale = editedValue;
-                expect(table.records[8].WeightScale).to.equal(editedValue);
+                table.records[8].Value = editedValue;
+                expect(table.records[8].Value).to.equal(editedValue);
 
                 await file.save(filePathToSave);
 
@@ -1552,25 +1528,21 @@ describe('College Football 27 end to end tests', function () {
                 const table2 = file2.getTableByUniqueId(tableUniqueId);
                 await table2.readRecords();
 
-                expect(table.records[8].WeightScale).to.equal(editedValue);
-                expect(table.records[9].WeightScale).to.equal(
-                    0.8500000238418579
-                );
+                expect(table.records[8].Value).to.equal(editedValue);
+                expect(table.records[9].Value).to.equal(0.949999988079071);
             });
         });
 
-        describe('EndofSeasonResigningStartReaction', () => {
+        describe('RegularSeasonEndReaction', () => {
             let table;
             beforeEach(() => {
-                table = file.getTableByUniqueId(296796924);
+                table = file.getTableByUniqueId(1217016781);
             });
 
             it('table exists', () => {
                 expect(table).to.not.be.undefined;
                 expect(table).to.be.instanceOf(FranchiseFileTable);
-                expect(table.name).to.equal(
-                    'EndofSeasonReSigningStartReaction'
-                );
+                expect(table.name).to.equal('RegularSeasonEndReaction');
             });
 
             it('parses expected attribute values', () => {
@@ -1580,28 +1552,28 @@ describe('College Football 27 end to end tests', function () {
                 expect(table.data).to.not.be.undefined;
                 expect(table.hexData).to.not.be.undefined;
                 expect(table.readRecords).to.exist;
-                expect(table.offset).to.equal(9233567);
+                expect(table.offset).to.equal(19572574);
             });
 
             it('parsed expected header', () => {
                 expect(table.header).to.not.be.undefined;
-                expect(table.header.tableId).to.equal(4613);
-                expect(table.header.data1RecordCount).to.equal(1);
-                expect(table.header.record1Size).to.equal(32);
-                expect(table.header.headerSize).to.equal(264);
+                expect(table.header.tableId).to.equal(4321);
+                expect(table.header.data1RecordCount).to.equal(3);
+                expect(table.header.record1Size).to.equal(60);
+                expect(table.header.headerSize).to.equal(292);
                 expect(table.header.hasSecondTable).to.be.false;
-                expect(table.header.table1StartIndex).to.equal(264);
-                expect(table.header.table1Length).to.equal(96);
+                expect(table.header.table1StartIndex).to.equal(292);
+                expect(table.header.table1Length).to.equal(272);
             });
 
             it('has correct schema', () => {
                 expect(table.schema).to.not.be.undefined;
-                expect(table.schema.attributes.length).to.equal(8);
+                expect(table.schema.attributes.length).to.equal(15);
                 expect(table.schema.attributes[0].name).to.equal('EventRecord');
                 expect(table.schema.attributes[1].name).to.equal('Handle');
-                expect(table.schema.attributes[2].name).to.equal('Franchise');
+                expect(table.schema.attributes[2].name).to.equal('AwardsEval');
                 expect(table.schema.attributes[3].name).to.equal(
-                    'PlayerSigningEval'
+                    'CoachRetirementEval'
                 );
             });
 
@@ -1613,40 +1585,24 @@ describe('College Football 27 end to end tests', function () {
                 });
 
                 it('has expected offset table', () => {
-                    expect(table.loadedOffsets.length).to.equal(7);
-                    expect(table.offsetTable.length).to.equal(7);
+                    expect(table.loadedOffsets.length).to.equal(14);
+                    expect(table.offsetTable.length).to.equal(14);
 
                     let offset0 = table.offsetTable[0];
-                    expect(offset0.name).to.equal('TeamRequestManager');
+                    expect(offset0.name).to.equal('UpdateEndOfSeasonStats');
                     expect(offset0.isReference).to.be.true;
-                    expect(offset0.originalIndex).to.equal(7);
-                    expect(offset0.index).to.equal(7);
+                    expect(offset0.originalIndex).to.equal(14);
+                    expect(offset0.index).to.equal(14);
                     expect(offset0.offset).to.equal(0);
                     expect(offset0.indexOffset).to.equal(0);
                     expect(offset0.length).to.equal(32);
 
                     let offset5 = table.offsetTable[5];
-                    expect(offset5.name).to.equal('Franchise');
+                    expect(offset5.name).to.equal('PlayerProgressionEval');
 
                     let offset6 = table.offsetTable[6];
-                    expect(offset6.name).to.equal('EventRecord');
+                    expect(offset6.name).to.equal('PlayerManager');
                 });
-            });
-        });
-
-        describe('AnnualAwardsAvailablePeriodEndReaction', () => {
-            let table;
-            before((done) => {
-                table = file.getTableByUniqueId(4065784434);
-                table.readRecords().then(() => {
-                    done();
-                });
-            });
-
-            it('reads offset table correctly', () => {
-                expect(table.offsetTable[0].name).to.equal('SeasonInfo');
-                expect(table.offsetTable[1].name).to.equal('AwardsEvalRef');
-                expect(table.offsetTable[2].name).to.equal('EventRecord');
             });
         });
 
@@ -1833,16 +1789,6 @@ describe('College Football 27 end to end tests', function () {
                         table.data.readUInt32BE(table.header.headerOffset - 4)
                     ).to.equal(6);
                 });
-
-                // it('record stays empty as long as the first 4 bytes reference the 0th table', () => {
-                //   table.records[6].PlayerPosition = 'WR';
-
-                //   expect(table.emptyRecords.size).to.equal(1);
-                //   expect(table.emptyRecords.get(6)).to.eql({
-                //     previous: null,
-                //     next: 21
-                //   });
-                // });
 
                 it('can fill all empty records', () => {
                     table.records[6].PercentageSpline =
@@ -2068,7 +2014,7 @@ describe('College Football 27 end to end tests', function () {
         describe('Team', () => {
             let table;
             before((done) => {
-                table = file.getTableByUniqueId(637929298);
+                table = file.getTableByUniqueId(3359508968);
                 table.readRecords(['WeeklyDefenseMedal']).then(() => {
                     done();
                 });
@@ -2093,7 +2039,7 @@ describe('College Football 27 end to end tests', function () {
         describe('Spline', () => {
             let table;
             before((done) => {
-                table = file.getTableByName('Spline');
+                table = file.getTableById(5160);
                 table.readRecords().then(() => {
                     done();
                 });
@@ -2108,7 +2054,7 @@ describe('College Football 27 end to end tests', function () {
 
         describe('int[]', () => {
             let table;
-            const intArrayTableId = 5482;
+            const intArrayTableId = 4706;
 
             before((done) => {
                 table = file.getTableById(intArrayTableId); //OverallPercentage -> Spline -> int[]
@@ -2123,7 +2069,7 @@ describe('College Football 27 end to end tests', function () {
             });
 
             it('correctly reads in records', () => {
-                expect(table.records[0].int0).to.equal(58);
+                expect(table.records[0].int0).to.equal(54);
             });
 
             it('changes record correctly', () => {
@@ -2169,7 +2115,7 @@ describe('College Football 27 end to end tests', function () {
 
         describe('PlayerPositionLookupTable', () => {
             let table;
-            const tableId = 5563;
+            const tableId = 5997;
 
             before(async () => {
                 table = file.getTableById(tableId);
@@ -2182,20 +2128,22 @@ describe('College Football 27 end to end tests', function () {
 
             it('contains correct reference', () => {
                 expect(table.records[0].getReferenceDataByKey('WR')).to.eql({
-                    tableId: 5565,
-                    rowNumber: 14
+                    tableId: 4146,
+                    rowNumber: 0
                 });
             });
         });
 
         describe('can follow references', () => {
             it('can follow reference data correctly', () => {
-                const playerArrayTable = file.getTableByName('Player[]');
+                const playerArrayTable = file.getTableById(
+                    playerArrayTableIdToTest
+                );
                 let record = playerArrayTable.records[0];
 
                 const result = file.getReferencedRecord(record.Player1);
                 const expectedResult =
-                    file.getTableById(playerTableId).records[753];
+                    file.getTableById(playerTableId).records[2730];
 
                 expect(result.data).to.eql(expectedResult.data);
             });
@@ -2211,7 +2159,7 @@ describe('College Football 27 end to end tests', function () {
 
         describe('Tweet', () => {
             let table;
-            const tweetTableId = 4280;
+            const tweetTableId = 4323;
 
             before(async () => {
                 table = file.getTableById(tweetTableId);
@@ -2221,6 +2169,9 @@ describe('College Football 27 end to end tests', function () {
             it('can set two table2 fields that exist in the file in inverse order', async () => {
                 table.records[0].AuthorName = 'Test';
                 table.records[0].ImageData = 'It works';
+                table.records[0].TweetHash = 333535142;
+                table.records[0].Tweet =
+                    "As of this week, there's NFL action to watch EVERY SINGLE WEEK until February! :fire: ";
 
                 expect(table.records[0].AuthorName).to.equal('Test');
                 expect(table.records[0].ImageData).to.equal('It works');
@@ -2256,29 +2207,29 @@ describe('College Football 27 end to end tests', function () {
 
                     expect(table.recordsRead).to.be.true;
                     expect(table.records.length).to.equal(101);
-                    expect(table.table2Records.length).to.equal(606);
-                    expect(table.emptyRecords.size).to.equal(98);
+                    expect(table.table2Records.length).to.equal(303);
+                    expect(table.emptyRecords.size).to.equal(100);
 
-                    expect(table.records[2].TweetHash).to.equal(333535142);
-                    expect(table.records[2].Tweet).to.equal(
+                    expect(table.records[0].TweetHash).to.equal(333535142);
+                    expect(table.records[0].Tweet).to.equal(
                         "As of this week, there's NFL action to watch EVERY SINGLE WEEK until February! :fire: "
                     );
-                    expect(table.records[2].AuthorName).to.equal('NFL @NFL');
+                    expect(table.records[0].AuthorName).to.equal('Test');
                 });
 
                 it('can replace with modified data', async () => {
                     const modifiedData = fs.readFileSync(
                         path.join(
                             __dirname,
-                            '../data/table-import/26_TweetTableModified.dat'
+                            '../data/table-import/c27_TweetTableModified.dat'
                         )
                     );
                     await table.replaceRawData(modifiedData, true);
 
                     expect(table.recordsRead).to.be.true;
                     expect(table.records.length).to.equal(101);
-                    expect(table.table2Records.length).to.equal(606);
-                    expect(table.emptyRecords.size).to.equal(98);
+                    expect(table.table2Records.length).to.equal(303);
+                    expect(table.emptyRecords.size).to.equal(100);
 
                     expect(table.header.tableId).to.equal(tweetTableId);
                     expect(table.records[2].TweetHash).to.equal(1);
@@ -2314,42 +2265,42 @@ describe('College Football 27 end to end tests', function () {
 
         describe('can get references to a specific record', () => {
             it('expected result', () => {
-                const references = file.getReferencesToRecord(5535, 0);
-                const overallPercentageTable = file.getTableById(4098);
+                const references = file.getReferencesToRecord(5160, 0);
+                const overallPercentageTable = file.getTableById(4097);
 
                 expect(references.length).to.equal(2);
-                expect(references[0].tableId).to.eql(4098);
+                expect(references[0].tableId).to.eql(4097);
                 expect(references[0].name).to.eql('OverallPercentage');
                 expect(references[0].table).to.eql(overallPercentageTable);
             });
 
             it('expected result - Team', () => {
-                const references = file.getReferencesToRecord(5913, 0);
+                const references = file.getReferencesToRecord(6334, 0);
 
-                const seasonGameTable = file.getTableById(4154);
-                const teamArrayTable = file.getTableById(4648);
+                const gameOStatsTable = file.getTableById(4110);
+                const teamArrayTable = file.getTableById(5303);
 
-                expect(references.length).to.equal(19);
+                expect(references.length).to.equal(32);
 
-                expect(references[0].tableId).to.eql(4154);
-                expect(references[0].name).to.eql('SeasonGame');
-                expect(references[0].table).to.eql(seasonGameTable);
+                expect(references[0].tableId).to.eql(4110);
+                expect(references[0].name).to.eql('GameOffensiveStats');
+                expect(references[0].table).to.eql(gameOStatsTable);
 
-                expect(references[7].tableId).to.eql(4648);
-                expect(references[7].name).to.eql('Team[]');
-                expect(references[7].table).to.eql(teamArrayTable);
+                expect(references[21].tableId).to.eql(5303);
+                expect(references[21].name).to.eql('Team[]');
+                expect(references[21].table).to.eql(teamArrayTable);
             });
 
             it('expected result - FranchiseUser', () => {
                 // FranchiseUser is referenced with generic type `record` in some tables
-                const references = file.getReferencesToRecord(4291, 0);
-                expect(references.length).to.equal(11);
+                const references = file.getReferencesToRecord(4333, 0);
+                expect(references.length).to.equal(8);
             });
         });
 
-        describe('ResponseForm[] - last table', () => {
+        describe('last table', () => {
             let table;
-            const lastTableId = 5995;
+            const lastTableId = 6380;
 
             before(async () => {
                 table = file.getTableById(lastTableId);
@@ -2357,13 +2308,13 @@ describe('College Football 27 end to end tests', function () {
             });
 
             it('trailing 8 bytes of file is not included in data', () => {
-                expect(table.data.length).to.equal(240);
+                expect(table.data.length).to.equal(264);
             });
         });
 
         describe('TeamNeedEvaluation', () => {
             let table;
-            const tableId = 4104;
+            const tableId = 4109;
 
             before(async () => {
                 table = file.getTableById(tableId);
@@ -2371,39 +2322,39 @@ describe('College Football 27 end to end tests', function () {
             });
 
             it('correctly identifies first empty record', () => {
-                expect(table.header.nextRecordToUse).to.equal(905);
+                expect(table.header.nextRecordToUse).to.equal(0);
             });
 
             it('recognizes record as not empty after editing first column', () => {
-                table.records[905].Depth = 1;
+                table.records[0].Depth = 1;
 
-                expect(table.records[905].isEmpty).to.be.false;
-                expect(table.header.nextRecordToUse).to.equal(906);
+                expect(table.records[0].isEmpty).to.be.false;
+                expect(table.header.nextRecordToUse).to.equal(1);
             });
 
             it('does not zero out the first 32 bits since changed field is part of first 32 bytes', () => {
                 // each record is only 4 bytes long
-                table.records[906].Severity = 1;
-                expect(
-                    table.records[906].data.readUInt32BE(0)
-                ).to.be.greaterThan(0);
+                table.records[1].Severity = 1;
+                expect(table.records[1].data.readUInt32BE(0)).to.be.greaterThan(
+                    0
+                );
             });
 
             it('recognizes record as not empty after editing last column', () => {
-                table.records[907].Depth = 25;
-                expect(table.header.nextRecordToUse).to.equal(908);
+                table.records[2].Depth = 25;
+                expect(table.header.nextRecordToUse).to.equal(3);
             });
 
             it('will not clear out values changed if first column was edited before last column', () => {
-                table.records[908].Depth; // caching values
-                table.records[908].Severity; // caching values
+                table.records[3].Depth; // caching values
+                table.records[3].Severity; // caching values
 
-                table.records[908].Depth = 1;
-                table.records[908].Severity = 25;
+                table.records[3].Depth = 1;
+                table.records[3].Severity = 25;
 
-                expect(table.records[908].isEmpty).to.be.false;
-                expect(table.records[908].Depth).to.equal(1); // check that value persists
-                expect(table.records[908].Severity).to.equal(25); // check that value persists
+                expect(table.records[3].isEmpty).to.be.false;
+                expect(table.records[3].Depth).to.equal(1); // check that value persists
+                expect(table.records[3].Severity).to.equal(25); // check that value persists
             });
         });
 
@@ -2445,12 +2396,12 @@ describe('College Football 27 end to end tests', function () {
             });
 
             it('changing a table2 value should mark the entire row as not empty', () => {
-                table.records[137].FirstName = 'Test';
-                expect(table.records[137].isEmpty).to.be.false;
+                table.records[497].FirstName = 'Test';
+                expect(table.records[497].isEmpty).to.be.false;
             });
 
             it('changing an empty table2 value will reset the table2 offsets for that record', async () => {
-                table.records[137].FirstName = 'Test';
+                table.records[497].FirstName = 'Test';
 
                 // first string in first record stays at offset 0
                 expect(
@@ -2459,35 +2410,35 @@ describe('College Football 27 end to end tests', function () {
 
                 // previously empty row points to its allocated table2 bytes (non-FTC files allocate bytes for empty rows)
                 expect(
-                    table.records[137]._fields.FirstName.secondTableField.offset
-                ).to.equal(17399);
+                    table.records[497]._fields.FirstName.secondTableField.offset
+                ).to.equal(64610);
                 expect(
-                    table.records[137]._fields.LastName.secondTableField.offset
-                ).to.equal(17416);
+                    table.records[497]._fields.LastName.secondTableField.offset
+                ).to.equal(64627);
                 expect(
-                    table.records[137]._fields.AssetName.secondTableField.offset
-                ).to.equal(17434);
+                    table.records[497]._fields.AssetName.secondTableField.offset
+                ).to.not.equal(0);
                 expect(
-                    table.records[137]._fields.Name.secondTableField.offset
-                ).to.equal(17508);
+                    table.records[497]._fields.Name.secondTableField.offset
+                ).to.not.equal(0);
             });
 
             it("changing an empty table2 value will un-empty the row and zero out the first 4 bytes if the field isn't part of it", () => {
-                table.records[137].FirstName = 'Test';
+                table.records[497].FirstName = 'Test';
 
-                expect(table.records[137].data.readUInt32BE(0)).to.equal(0);
+                expect(table.records[497].data.readUInt32BE(0)).to.equal(0);
                 const recordStartIndex =
                     table.header.table1StartIndex +
-                    137 * table.header.record1Size;
+                    497 * table.header.record1Size;
                 expect(table.data.readUInt32BE(recordStartIndex)).to.equal(0);
             });
 
             it("when the first 4 bytes are zeroed out, the first column's value changes as well", () => {
-                let value = table.records[138].PlaysheetTalents; // read the 1st column value first so its cached
+                let value = table.records[498].DefensivePlaybook; // read the 1st column value first so its cached
 
-                table.records[138].FirstName = 'Test';
+                table.records[498].FirstName = 'Test';
                 expect(value).to.not.equal('00000000000000000000000000000000');
-                expect(table.records[138].PlaysheetTalents).to.equal(
+                expect(table.records[498].DefensivePlaybook).to.equal(
                     '00000000000000000000000000000000'
                 );
             });
@@ -2495,8 +2446,8 @@ describe('College Football 27 end to end tests', function () {
             it('changing an empty table2 value will persist the new values and new offsets', async () => {
                 const firstRowFirstName = table.records[0].FirstName;
 
-                table.records[138].FirstName = 'Test1';
-                expect(table.records[138].FirstName).to.equal('Test1');
+                table.records[498].FirstName = 'Test1';
+                expect(table.records[498].FirstName).to.equal('Test1');
 
                 // Save test
                 await file.save(filePathToSave);
@@ -2515,91 +2466,83 @@ describe('College Football 27 end to end tests', function () {
                 await table2.readRecords();
 
                 expect(table2.records[0].FirstName).to.equal(firstRowFirstName);
-                expect(table2.records[138].FirstName).to.equal('Test1');
+                expect(table2.records[498].FirstName).to.equal('Test1');
 
                 expect(
-                    table.records[137]._fields.FirstName.secondTableField.offset
-                ).to.equal(17399);
+                    table.records[497]._fields.FirstName.secondTableField.offset
+                ).to.equal(64610);
                 expect(
-                    table.records[137]._fields.LastName.secondTableField.offset
-                ).to.equal(17416);
+                    table.records[497]._fields.LastName.secondTableField.offset
+                ).to.equal(64627);
                 expect(
                     table.records[137]._fields.AssetName.secondTableField.offset
-                ).to.equal(17434);
+                ).to.not.equal(0);
                 expect(
                     table.records[137]._fields.Name.secondTableField.offset
-                ).to.equal(17508);
+                ).to.not.equal(0);
             });
 
             it('if a field in the first 4 bytes is changed, it should not get zeroed out', () => {
-                table.records[139].PlaysheetTalents =
+                table.records[499].DefensivePlaybook =
                     '10000000000000001110101110010111';
-                expect(table.records[139].PlaysheetTalents).to.equal(
+                expect(table.records[499].DefensivePlaybook).to.equal(
                     '10000000000000001110101110010111'
                 );
 
-                expect(table.records[140].PlaysheetTalents).to.not.equal(
+                expect(table.records[500].DefensivePlaybook).to.not.equal(
                     '10000000000000001110101110010111'
                 );
-                table.records[140].FirstName = 'Test';
-                table.records[140].PlaysheetTalents =
+                table.records[500].FirstName = 'Test';
+                table.records[500].DefensivePlaybook =
                     '10000000000000001110101110010111';
-                expect(table.records[140].PlaysheetTalents).to.equal(
+                expect(table.records[500].DefensivePlaybook).to.equal(
                     '10000000000000001110101110010111'
                 );
             });
 
             it('can recalculate empty references after un-emptying a row', () => {
+                table.records[505].DefensivePlaybook =
+                    '10000000000000001110101110010111';
                 table.recalculateEmptyRecordReferences();
-                expect(table.emptyRecords.get(136)).to.eql({
-                    previous: 135,
-                    next: 141
+                expect(table.emptyRecords.get(506)).to.eql({
+                    previous: 504,
+                    next: 507
                 });
 
-                expect(table.emptyRecords.get(137)).to.eql(undefined); // un-emptied in a test above
-                expect(table.emptyRecords.get(138)).to.eql(undefined); // un-emptied in a test above
-                expect(table.emptyRecords.get(139)).to.eql(undefined); // un-emptied in a test above
-                expect(table.emptyRecords.get(140)).to.eql(undefined); // un-emptied in a test above
+                expect(table.emptyRecords.get(497)).to.eql(undefined); // un-emptied in a test above
+                expect(table.emptyRecords.get(498)).to.eql(undefined); // un-emptied in a test above
+                expect(table.emptyRecords.get(499)).to.eql(undefined); // un-emptied in a test above
+                expect(table.emptyRecords.get(500)).to.eql(undefined); // un-emptied in a test above
 
-                expect(table.emptyRecords.get(141)).to.eql({
-                    previous: 136,
-                    next: 142
+                expect(table.emptyRecords.get(501)).to.eql({
+                    previous: null,
+                    next: 502
                 });
             });
 
             it('field isChanged attribute is reset after saving', async () => {
-                table.records[138].FirstName = 'Test2';
-                expect(table.records[138]._fieldsArray[16].isChanged).to.be
+                table.records[498].FirstName = 'Test2';
+                expect(table.records[498]._fieldsArray[19].isChanged).to.be
                     .true;
 
                 // Save test
                 await file.save(filePathToSave);
 
-                expect(table.records[138]._fieldsArray[16].isChanged).to.be
+                expect(table.records[498]._fieldsArray[19].isChanged).to.be
                     .false;
-            });
-        });
-
-        describe('TalentTier', () => {
-            let table;
-            const talentTierUniqueId = 3132982188;
-
-            before(async () => {
-                table = file.getTableByUniqueId(talentTierUniqueId);
-                await table.readRecords();
             });
 
             it('can set the value of an empty record enum - autoUnempty: true', () => {
-                expect(table.records[144].isEmpty).to.be.true;
-                table.records[144].TierStatus = 'NotOwned';
-                expect(table.records[144].TierStatus).to.equal('NotOwned');
-                expect(table.records[144].isEmpty).to.be.false;
+                expect(table.records[501].isEmpty).to.be.true;
+                table.records[501].Personality = 'Intense';
+                expect(table.records[501].Personality).to.equal('Intense');
+                expect(table.records[501].isEmpty).to.be.false;
             });
 
             it('can set the value of an enum to an empty record reference', () => {
-                table.records[144].TierStatus = '1010110';
-                expect(table.records[144].TierStatus).to.equal('1010110');
-                expect(table.records[144].isEmpty).to.be.false;
+                table.records[502].Personality = '1010110';
+                expect(table.records[502].Personality).to.equal('1010110');
+                expect(table.records[502].isEmpty).to.be.false;
             });
         });
 
@@ -2629,7 +2572,7 @@ describe('College Football 27 end to end tests', function () {
             it('can get the uncompressed JSON data from the field', () => {
                 const data = table.records[0].RawData;
                 expect(data[0]).to.equal('{');
-                expect(data.length).to.equal(592);
+                expect(data.length).to.equal(2215);
             });
 
             it('can get the table3 record from the field', () => {
@@ -2637,18 +2580,18 @@ describe('College Football 27 end to end tests', function () {
                     table.records[0]._fields.RawData.thirdTableField;
                 const data = thirdTableField.value;
                 expect(data[0]).to.equal('{');
-                expect(data.length).to.equal(592);
+                expect(data.length).to.equal(2215);
             });
 
             it('can parse the table3 record as JSON', () => {
                 let existingData = JSON.parse(table.records[0].RawData);
-                expect(existingData.loadouts.length).to.equal(2);
+                expect(existingData.loadouts.length).to.equal(1);
                 expect(existingData.loadouts[0].loadoutCategory).to.equal(
-                    'CoachApparel'
+                    'GearOnly'
                 );
                 expect(
                     existingData.loadouts[0].loadoutElements.length
-                ).to.equal(6);
+                ).to.equal(31);
             });
 
             it('can get the table3 unformatted data', () => {
@@ -2656,7 +2599,7 @@ describe('College Football 27 end to end tests', function () {
                     table.records[0]._fields.RawData.thirdTableField;
                 const data = thirdTableField.unformattedValue;
                 expect(data.length).to.equal(377);
-                expect(data.readUInt16LE(0)).to.equal(0x43); // size of gzipped data in first 2 bytes
+                expect(data.readUInt16LE(0)).to.equal(77); // size of gzipped data in first 2 bytes
                 expect(data.readUInt32BE(2)).to.equal(0x28b52ffd); // zstd signature
             });
 
@@ -2707,7 +2650,7 @@ describe('College Football 27 end to end tests', function () {
                 ).to.equal(377);
 
                 const dictBuf = fs.readFileSync(
-                    path.join(__dirname, '../../data/zstd-dicts/26/dict.bin')
+                    path.join(__dirname, '../../data/zstd-dicts/c27/dict.bin')
                 );
 
                 const length =
@@ -2723,9 +2666,9 @@ describe('College Football 27 end to end tests', function () {
                     { dictionary: dictBuf }
                 );
 
-                expect(new IsonProcessor(26).isonVisualsToJson(data)).to.eql(
-                    existingData
-                );
+                expect(
+                    new IsonProcessor(27, 'college').isonVisualsToJson(data)
+                ).to.eql(existingData);
             });
 
             it('saves properly after edit', (done) => {
@@ -2919,53 +2862,6 @@ describe('College Football 27 end to end tests', function () {
                 });
             });
 
-            it('gracefully handles M26 FTC visuals data', async () => {
-                const ftc = await FranchiseFile.create(ftcFilePathToUse);
-                const ftcViz = ftc.getTableByName('CharacterVisuals');
-                await ftcViz.readRecords();
-                expect(ftcViz.records[0].RawData).to.not.be.null;
-            });
-
-            /* Not relevant for M26 as this scenario does not exist
-      describe('handles scenario where data exists between the table3 size & data', () => {
-        let table, file3;
-
-        before((done) => {
-          file3 = new FranchiseFile('tests/data/CAREER-24Table3Data');
-          file3.on('ready', () => {
-            table = file3.getTableByUniqueId(characterVisualsUniqueId);
-            table.readRecords().then(() => {
-              done();
-            });
-          });
-        });
-
-        it('can read the data', () => {
-          expect(table.records[1400].RawData.length).to.be.greaterThan(0);
-          expect(table.records[1400]._fields.RawData.thirdTableField.unformattedValue.readUInt8(2)).to.eql(7);
-        });
-
-        it('can set the data', (done) => {
-          const newData = {
-            firstName: 'Test',
-            lastName: 'Test'
-          };
-
-          table.records[1400].RawData = newData;
-
-          file3.save(filePathToSave).then(() => {
-            let file2 = new FranchiseFile(filePathToSave);
-            file2.on('ready', async () => {
-              let table2 = file2.getTableByUniqueId(characterVisualsUniqueId);
-              await table2.readRecords();
-    
-              expect(table2.records[1400].RawData).to.eql(JSON.stringify(newData));
-              done();
-            });
-          });
-        });
-      });
-
             it('handles replacing raw table data', (done) => {
                 const tableRawData = table.hexData;
 
@@ -2992,6 +2888,5 @@ describe('College Football 27 end to end tests', function () {
                 });
             });
         });
-        */
     });
 });
