@@ -70,6 +70,10 @@ FranchiseZstdTable3FieldStrategy.getInitialUnformattedValue = (
     overflowField,
     strategyContext // eslint-disable-line no-unused-vars
 ) => {
+    if (field.parent.isEmpty) {
+        return null;
+    }
+
     // extend maxLength + 2 because the first 2 bytes are the size of the compressed data
     const table3InitialData = data.slice(
         field.thirdTableField.index,
@@ -95,6 +99,10 @@ FranchiseZstdTable3FieldStrategy.getFormattedValueFromUnformatted = (
     unformattedValue,
     strategyContext
 ) => {
+    if (!unformattedValue) {
+        return null;
+    }
+
     const gameYear = getGameYear(strategyContext);
     const gameType = getGameType(strategyContext);
     const tableName = strategyContext?.tableName || 'CharacterVisuals';

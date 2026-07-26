@@ -70,7 +70,7 @@ class FranchiseFileTable3Field {
             newUnformattedValue =
                 this.populateOverflowRecord(newUnformattedValue);
         } else {
-            this.clearOverflowRecord();
+            this.clearOverflowRecordIfExists();
         }
         this._unformattedValue = newUnformattedValue;
         if (this.lengthAtLastSave === null) {
@@ -166,7 +166,14 @@ class FranchiseFileTable3Field {
         return mainFieldData;
     }
 
-    clearOverflowRecord() {
+    clearOverflowRecordIfExists() {
+        const hasOverflowRef =
+            this.fieldReference.parent.getFieldByKey('Overflow');
+
+        if (!hasOverflowRef) {
+            return;
+        }
+
         // Get the current overflow reference
         const overflowRef =
             this.fieldReference.parent.getFieldByKey('Overflow').value;
@@ -191,6 +198,6 @@ class FranchiseFileTable3Field {
     }
 }
 function getLengthOfUnformattedValue(value) {
-    return value.length;
+    return value?.length || 0;
 }
 export default FranchiseFileTable3Field;

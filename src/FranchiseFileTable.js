@@ -464,13 +464,6 @@ class FranchiseFileTable extends EventEmitter {
                         this.records
                     );
                 }
-                if (this.header.hasThirdTable) {
-                    this._parseTable3Values(
-                        this.data,
-                        this.header,
-                        this.records
-                    );
-                }
                 this.emptyRecords = this._parseEmptyRecords();
                 this.records.forEach((record, index) => {
                     if (this.isArray) {
@@ -480,6 +473,13 @@ class FranchiseFileTable extends EventEmitter {
                         record.isEmpty = true;
                     }
                 });
+                if (this.header.hasThirdTable) {
+                    this._parseTable3Values(
+                        this.data,
+                        this.header,
+                        this.records
+                    );
+                }
                 this.recordsRead = true;
                 resolve(this);
             } else {

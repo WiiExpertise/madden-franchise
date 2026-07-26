@@ -2888,5 +2888,66 @@ describe('College Football 27 end to end tests', function () {
                 });
             });
         });
+
+        describe('CharacterGameplay', () => {
+            let table;
+            const characterGameplayUniqueId = 2615759307;
+
+            before(async () => {
+                table = file.getTableByUniqueId(characterGameplayUniqueId);
+                await table.readRecords();
+            });
+
+            it('parses expected value', () => {
+                expect(table.records[0].RawData).to.eql(
+                    '{"characterAnimations":{"qbThrowStyle":20,"qbShotgunStance":6,"qbUnderCenterStance":6}}'
+                );
+            });
+
+            it('correctly detects empty records', () => {
+                expect(table.emptyRecords.size).to.equal(37);
+                expect(table.emptyRecords.get(539)).to.eql({
+                    previous: null,
+                    next: 23
+                });
+            });
+
+            it('gracefully handles reading empty record data', () => {
+                expect(table.records[16].isEmpty).to.be.true;
+                expect(table.records[23].isEmpty).to.be.true;
+
+                expect(table.records[16].RawData).to.be.null;
+                expect(table.records[23].RawData).to.be.null;
+            });
+
+            it('handles un-empty scenario', () => {
+                // each table3 record is 0x98 (152) bytes long. 152*16 = 2432
+                const expectedTable3Offset = 2432;
+
+                expect(table.records[16].isEmpty).to.be.true;
+                expect(
+                    table.records[16]
+                        .getFieldByKey('RawData')
+                        .unformattedValue.getBits(0, 32)
+                ).to.not.equal(expectedTable3Offset);
+
+                const newData = {
+                    characterAnimations: { qbThrowStyle: 31 }
+                };
+
+                table.records[16].RawData = newData;
+
+                expect(table.records[16].isEmpty).to.be.false;
+                expect(table.records[16].RawData).to.eql(
+                    JSON.stringify(newData)
+                );
+
+                expect(
+                    table.records[16]
+                        .getFieldByKey('RawData')
+                        .unformattedValue.getBits(0, 32)
+                ).to.equal(expectedTable3Offset);
+            });
+        });
     });
 });
